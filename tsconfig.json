@@ -1,0 +1,17 @@
+{
+    "extends": [
+        "@tsconfig/node26/tsconfig.json",
+        "@tsconfig/node-ts/tsconfig.json"
+    ],
+    "compilerOptions": {
+        "noEmit": true,
+        "types": ["node"],
+        "declaration": true,
+        "isolatedDeclarations": true
+    },
+    "include": [
+        "src/**/*",
+        "test/**/*",
+        "vitest.config.ts"
+    ]
+}

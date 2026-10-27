@@ -1,0 +1,52 @@
+{
+  "name": "s3-bucket-load",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Phygon/s3-bucket-load.git"
+  },
+  "devDependencies": {
+    "@tsconfig/node-ts": "^23.6.4",
+    "@tsconfig/node26": "^26.0.1",
+    "@types/node": "^26.6.5",
+    "@vitest/coverage-v8": "^5.0.5",
+    "tsdown": "^0.23.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "description": "A TypeScript client for Amazon S3 and S3-compatible object storage, with signed requests, retries, and multipart uploads",
+  "files": [
+    "dist"
+  ],
+  "license": "0BSD",
+  "scripts": {
+    "build": "tsdown",
+    "prepare": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "type": "module",
+  "tsdown": {
+    "entry": ["./src/index.ts"],
+    "outDir": "dist",
+    "format": ["esm"],
+    "dts": true,
+    "sourcemap": true,
+    "clean": true
+  },
+  "dependencies": {
+    "aws-signature": "https://github.com/Phygon/aws-signature/releases/download/v0.2.0/aws-signature-0.2.0.tgz",
+    "concurrent-iteration": "https://github.com/Phygon/concurrent-iteration/releases/download/v0.1.0/concurrent-iteration-0.1.0.tgz",
+    "fast-xml-builder": "^1.3.1",
+    "fast-xml-parser": "^5.11.2"
+  }
+}
