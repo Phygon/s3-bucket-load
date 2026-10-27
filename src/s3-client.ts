@@ -10,6 +10,14 @@ import { bucketEndpoint, encodeObjectKey, parseS3ServiceError } from "./s3-utils
 import type { ProgressCallback } from "./http-utils.ts";
 import type { Credentials, HttpMethod, Signer, SignerConfig, SignOptions } from "./signer.ts";
 
+/** Reject key segments that URL resolution would silently normalize. */
+function validateObjectKey(key: string): void {
+    const invalidSegment = key.split('/').find((segment) => segment === '.' || segment === '..');
+    if (invalidSegment !== undefined) {
+        throw new TypeError(`Object keys cannot contain "${invalidSegment}" as a path segment`);
+    }
+}
+
 /** Options for one object download. */
 export type DownloadOptions = {
     /** Cancels the request and response-body consumption. */
@@ -112,6 +120,9 @@ export class S3Client {
 
     /**
      * Uploads a `Blob` under `key`, using one PUT up to `singleUploadThreshold` and multipart above it.
+     * Keys cannot contain `.` or `..` as complete slash-delimited segments.
+     * @throws {TypeError} Rejects the promise if the key contains a `.` or `..` segment.
+     * @throws {RangeError} Rejects the promise if a numeric upload option is invalid.
      *
      * @example
      * ```ts
@@ -123,13 +134,16 @@ export class S3Client {
      * });
      * ```
      */
-    upload(key: string, source: Blob, options: UploadOptions = {}): Promise<UploadResult> {
+    async upload(key: string, source: Blob, options: UploadOptions = {}): Promise<UploadResult> {
+        validateObjectKey(key);
         return new S3ObjectUpload({ key, source, executor: this.executor, options }).start();
     }
 
     /**
-     * Downloads `key` and returns the raw `Response`; consume its body to read the object.
-     * Progress callbacks run as the body is consumed, not merely when headers arrive.
+     * Downloads `key` and returns a `Response`; consume its body to read the object.
+     * When progress is requested, the response body is wrapped to report bytes as it is consumed.
+     * Keys cannot contain `.` or `..` as complete slash-delimited segments.
+     * @throws {TypeError} Rejects the promise if the key contains a `.` or `..` segment.
      *
      * @example
      * ```ts
@@ -139,12 +153,18 @@ export class S3Client {
      * const csv = await response.text();
      * ```
      */
-    download(key: string, options: DownloadOptions = {}): Promise<Response> {
+    async download(key: string, options: DownloadOptions = {}): Promise<Response> {
+        validateObjectKey(key);
         return this.executor.execute(getObjectOperation({ key }), options);
     }
 
-    /** Returns a presigned GET URL for `key`. Makes no network request. */
+    /**
+     * Returns a presigned GET URL for `key` without making a request to S3; the signer may make a network request.
+     * Keys cannot contain `.` or `..` as complete slash-delimited segments.
+     * @throws {TypeError} Rejects the promise if the key contains a `.` or `..` segment.
+     */
     async getDownloadUrl(key: string, options: Omit<SignOptions, 'signQuery'> = {}): Promise<string> {
+        validateObjectKey(key);
         const { url } = await this.signer(
             { ...options, url: new URL(encodeObjectKey(key), this.endpoint).href, method: 'GET', signQuery: true },
             this.signerConfig,

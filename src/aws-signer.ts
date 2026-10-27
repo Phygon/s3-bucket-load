@@ -26,8 +26,8 @@ export type SignatureProvider = (payload: SigningPayload) => Promise<string>;
  * Requires `credentials.accessKeyId` and `credentials.secretAccessKey`; an optional session token is included.
  * Use this when the application can securely access the AWS secret key.
  *
- * @returns A signer for use in `S3Client` or any compatible signer consumer.
- * @throws {Error} When the returned signer runs without an access key ID or secret access key.
+ * @returns A signer for use in `S3Client` or any compatible signer consumer. Its promise rejects
+ * if the access key ID or secret access key is missing.
  * @example
  * ```ts
  * const signer = createAwsSigner();
@@ -54,8 +54,8 @@ export function createAwsSigner(): Signer {
  * not a credentials object or separate access-key argument. Keep extra authentication or signing context in the provider's closure.
  *
  * @param provider Async function that returns the signature for the supplied SigV4 payload.
- * @returns A signer for use in `S3Client` or any compatible signer consumer.
- * @throws {Error} When the returned signer runs without `credentials.accessKeyId`; provider errors propagate.
+ * @returns A signer for use in `S3Client` or any compatible signer consumer. Its promise rejects
+ * if `credentials.accessKeyId` is missing; provider errors propagate as promise rejections.
  * @example
  * ```ts
  * const signer = createAwsSignerWithProvider(async ({ canonicalRequest, stringToSign, datetime }) => {

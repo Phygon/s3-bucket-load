@@ -52,6 +52,10 @@ For AWS endpoints, the client builds a virtual-hosted bucket endpoint from `buck
 
 The client exposes read-only `bucket`, `region`, and resolved `endpoint` getters.
 
+## Object keys
+
+Keys cannot contain `.` or `..` as complete path segments; names such as `.env` are allowed. This prevents URL resolution from changing the key. Invalid keys cause a `TypeError` in `upload()`, `download()`, and `getDownloadUrl()`.
+
 ## Uploading objects
 
 ```ts
@@ -80,7 +84,7 @@ The client uses a single PUT for objects at or below `singleUploadThreshold` and
 | --- | --- | --- |
 | `signal` | — | Abort signal for the upload. |
 | `onProgress` | — | Receives `transferred`, `total`, `completedParts`, and `totalParts`. |
-| `onState` | — | Receives `idle`, `uploading`, `completing`, `completed`, `failed`, or `cancelled`. |
+| `onState` | — | Receives `uploading`, `completing`, `completed`, `failed`, or `cancelled`. |
 | `singleUploadThreshold` | 5 MiB | Maximum size for a single-PUT upload. |
 | `partSize` | 5 MiB | Target multipart part size. |
 | `concurrency` | 4 | Maximum concurrent part uploads. |
@@ -111,7 +115,7 @@ Treat presigned URLs as bearer credentials: anyone holding the URL can use it un
 Use `createAwsSigner()` to sign with the supplied AWS credentials in the current process:
 
 ```ts
-import { S3Client, createAwsSigner } from 's3-client';
+import { S3Client, createAwsSigner } from 's3-bucket-load';
 
 const client = new S3Client({
     bucket: 'my-bucket',
@@ -126,16 +130,16 @@ const client = new S3Client({
 
 ### Remote signature provider
 
-Use `createAwsSignerWithProvider()` when another service or key system calculates the signature. The provider receives a `SigningPayload` with `canonicalRequest`, `stringToSign`, `datetime`, `region`, and `service`, and returns the signature string. It does not receive credentials.
+Use `createAwsSignerWithProvider()` when another service or key system calculates the signature. The provider function receives a `SigningPayload` with `canonicalRequest`, `stringToSign`, `datetime`, `region`, and `service`, and returns the signature string. It does not receive a credentials object or a separate access-key argument. The canonical request may nevertheless contain credential-related query parameters, so handle it as sensitive data.
 
-This example calls a service that accepts the first three fields as query parameters and responds with `{ "signature": "..." }`:
+This example calls a service that accepts the first three fields as query parameters and responds with `{ "signature": "..." }`. Avoid logging request URLs that contain signing material:
 
 ```ts
 import {
     S3Client,
     createAwsSignerWithProvider,
     type SignatureProvider,
-} from 's3-client';
+} from 's3-bucket-load';
 
 const signatureProvider: SignatureProvider = async ({
     canonicalRequest,
@@ -168,6 +172,8 @@ You can also provide a custom `Signer` directly. It receives `SignParams` and a 
 
 Requests retry retryable failures by default, including fetch network errors and service errors with HTTP status 408, 429, or 500 and above. A service-specific `retryable` value can override the status-based decision. The default is two retries after the first attempt, with full jitter and an initial backoff ceiling of 500 ms that doubles on each retry. A `Retry-After` value is honored, subject to `maxRetryAfter`.
 
+Multipart upload initiation is not retried, to avoid creating duplicate uploads if a response is lost.
+
 | `RetryOptions` property | Default | Description |
 | --- | --- | --- |
 | `limit` | 2 | Maximum retries after the first attempt. |
@@ -196,7 +202,7 @@ All retry delays and `Retry-After` limits are in milliseconds. `limit` is the nu
 Failed S3 responses reject with `ServiceError`, which exposes `status`, `code`, `requestId`, `retryAfter` (milliseconds, when provided), and `retryable`.
 
 ```ts
-import { ServiceError } from 's3-client';
+import { ServiceError } from 's3-bucket-load';
 
 try {
     await client.download('missing.txt');

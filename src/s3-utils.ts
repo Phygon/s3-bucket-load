@@ -65,6 +65,11 @@ export function s3ServiceError(status: number, headers: Headers, body: string): 
         // A malformed or empty body still leaves the HTTP status as the error.
     }
 
+    return serviceErrorFromBody(status, headers, error);
+}
+
+/** Builds a service error from an already-parsed S3 error body. */
+function serviceErrorFromBody(status: number, headers: Headers, error: S3ErrorBody | undefined): ServiceError {
     const code = error?.Code;
     // Undefined lets isRetryableError decide from the HTTP status.
     const retryable = code !== undefined && RETRYABLE_S3_CODES.has(code) ? true : undefined;
@@ -82,7 +87,7 @@ export function s3ServiceError(status: number, headers: Headers, body: string): 
 export function parseS3Xml<T>(body: string, status: number, headers: Headers): T {
     const parsed = parseXml<T>(body);
     if (parsed.rootName === 'Error') {
-        throw s3ServiceError(status, headers, body);
+        throw serviceErrorFromBody(status, headers, parsed.value as S3ErrorBody | undefined);
     }
     if (parsed.value === undefined) {
         throw new Error(`S3 response with status ${status} was empty`);

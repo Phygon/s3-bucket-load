@@ -25,7 +25,7 @@ type MultipartUploadOptions = {
 
 /** Aggregate byte and part progress for an upload. */
 export type UploadProgress = {
-    /** Total bytes uploaded so far. */
+    /** Bytes consumed by fetch across current part attempts and completed parts, not necessarily acknowledged by S3. May decrease on retry. */
     transferred: number;
     /** Total size of the source Blob in bytes. */
     total: number;
@@ -35,7 +35,7 @@ export type UploadProgress = {
     totalParts: number;
 };
 
-/** Upload lifecycle: idle, uploading, completing, then completed; failures end as failed or cancelled. */
+/** Initial state is idle. Successful uploads move from uploading to completed, with completing before completion for multipart uploads; failures end as failed or cancelled. */
 export type UploadState =
     | 'idle'
     | 'uploading'
@@ -45,12 +45,12 @@ export type UploadState =
     | 'cancelled';
 
 /** Controls cancellation, progress reporting, and multipart behavior for one upload. */
-export type UploadOptions = Partial<MultipartUploadOptions> & {
+export type UploadOptions = MultipartUploadOptions & {
     /** Cancels the upload and triggers best-effort multipart cleanup. */
     signal?: AbortSignal;
-    /** Called as bytes are transferred and when parts complete. */
+    /** Called as bytes are transferred and when parts complete. An exception may interrupt the transfer or fail the upload. */
     onProgress?: (progress: UploadProgress) => void;
-    /** Called when the upload changes lifecycle state. */
+    /** Called when the upload changes state, not for the initial idle state. Exceptions are ignored. */
     onState?: (state: UploadState) => void;
 };
 
@@ -73,7 +73,7 @@ export type ObjectUploadConfig = {
     options?: UploadOptions;
 };
 
-type ResolvedOptions = Required<MultipartUploadOptions> & Pick<UploadOptions, 'signal' | 'onProgress' | 'onState'>;
+type ResolvedOptions = UploadOptions & Required<MultipartUploadOptions>;
 
 type PartRange = {
     partNumber: number;
@@ -98,6 +98,7 @@ class ProgressTracker {
     private readonly totalSize: number;
     private readonly onProgress: UploadOptions['onProgress'];
     private readonly transferredByPart: number[];
+    private transferred = 0;
     private completedParts = 0;
 
     constructor(partSizes: readonly number[], totalSize: number, onProgress: UploadOptions['onProgress']) {
@@ -126,9 +127,12 @@ class ProgressTracker {
             return;
         }
         const partSize = this.partSizes[partIndex];
-        this.transferredByPart[partIndex] = Math.min(Math.max(transferred, 0), partSize);
+        const previous = this.transferredByPart[partIndex];
+        const current = Math.min(Math.max(transferred, 0), partSize);
+        this.transferredByPart[partIndex] = current;
+        this.transferred += current - previous;
         this.onProgress({
-            transferred: this.transferredByPart.reduce((total, value) => total + value, 0),
+            transferred: this.transferred,
             total: this.totalSize,
             completedParts: this.completedParts,
             totalParts: this.partSizes.length,

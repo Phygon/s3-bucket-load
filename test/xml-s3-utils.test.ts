@@ -86,6 +86,40 @@ describe('S3 XML and metadata helpers', () => {
         )).toThrow(ServiceError);
     });
 
+    it('preserves S3 error details from a successful HTTP response', () => {
+        try {
+            parseS3Xml(
+                '<Error><Code>SlowDown</Code><Message>please wait</Message><RequestId>xml-id</RequestId></Error>',
+                200,
+                new Headers({ 'x-amz-request-id': 'header-id', 'retry-after': '2' }),
+            );
+            throw new Error('Expected an S3 service error');
+        } catch (error) {
+            expect(error).toBeInstanceOf(ServiceError);
+            expect(error).toMatchObject({
+                status: 200,
+                code: 'SlowDown',
+                message: 'please wait',
+                requestId: 'xml-id',
+                retryAfter: 2000,
+                retryable: true,
+            });
+        }
+    });
+
+    it('falls back to HTTP details for an empty or unrelated error body', () => {
+        for (const body of ['', '<Result><Code>SlowDown</Code></Result>']) {
+            const error = s3ServiceError(503, new Headers({ 'x-amz-request-id': 'header-id' }), body);
+            expect(error).toMatchObject({
+                status: 503,
+                message: 'S3 request failed with status 503',
+                requestId: 'header-id',
+            });
+            expect(error.code).toBeUndefined();
+            expect(error.retryable).toBeUndefined();
+        }
+    });
+
     it('throws when a successful XML response has no root value', () => {
         expect(() => parseS3Xml('', 200, new Headers())).toThrow('was empty');
     });

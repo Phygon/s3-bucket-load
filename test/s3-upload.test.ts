@@ -78,6 +78,44 @@ describe('S3ObjectUpload', () => {
         ]);
     });
 
+    it('aggregates progress when a retried part reports fewer bytes', async () => {
+        const onProgress = vi.fn();
+        const { executor } = makeExecutor(async (operation, options) => {
+            const request = requestOf(operation);
+            if (request.query?.uploads === '') return { uploadId: 'u-1' };
+            if (request.query?.partNumber) {
+                const partNumber = Number(request.query.partNumber);
+                if (partNumber === 1) {
+                    // Simulate a retry restarting the byte count for this part.
+                    options?.onProgress?.({ transferred: 2, total: 2 });
+                    options?.onProgress?.({ transferred: 1, total: 2 });
+                    options?.onProgress?.({ transferred: 2, total: 2 });
+                } else {
+                    options?.onProgress?.({ transferred: 1, total: 2 });
+                }
+                return { partNumber, etag: `etag-${partNumber}` };
+            }
+            if (request.method === 'POST' && request.query?.uploadId) return { etag: 'complete-tag' };
+            throw new Error(`Unexpected request: ${request.method}`);
+        });
+        const upload = new S3ObjectUpload({
+            key: 'large',
+            source: new Blob(['abcd']),
+            executor,
+            options: { singleUploadThreshold: 0, partSize: 2, minPartSize: 1, concurrency: 1, onProgress },
+        });
+
+        await upload.start();
+        expect(onProgress.mock.calls.map(([progress]) => progress)).toEqual([
+            { transferred: 2, total: 4, completedParts: 0, totalParts: 2 },
+            { transferred: 1, total: 4, completedParts: 0, totalParts: 2 },
+            { transferred: 2, total: 4, completedParts: 0, totalParts: 2 },
+            { transferred: 2, total: 4, completedParts: 1, totalParts: 2 },
+            { transferred: 3, total: 4, completedParts: 1, totalParts: 2 },
+            { transferred: 4, total: 4, completedParts: 2, totalParts: 2 },
+        ]);
+    });
+
     it('aborts a multipart upload after a part fails and preserves the original error', async () => {
         const failure = new Error('part failed');
         const requests: Array<{ method: string; query?: Record<string, string> }> = [];
